@@ -1,0 +1,99 @@
+---
+title: "Untitled"
+output: html_document
+date: "2024-10-01"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(tidyverse)
+library(teamcolors)
+library(directlabels)
+library(ggrepel)
+library(lme4)
+library(broom)
+library(purrr)
+library(sjPlot)
+library(cowplot)
+library(modelr)
+library(mgcv) #gam
+library(randomForest)
+library(sportyR)
+library(ggdark)
+library(scales)
+library(svglite)
+library(parallel)
+library(doParallel)
+library(foreach)
+library(MASS)
+#remotes::install_github("marcpaterno/rcosmosis")
+library(rcosmosis)
+library(wCorr)
+goal <- read_csv("data/goal.csv")
+goal %>% rename(Proportion_of_Goals = `Proportion of Goals`, Shot_Attempts = `Shots Attempted`) -> goal
+```
+
+```{r}
+
+
+goal %>% dplyr::select(Proportion_of_Goals, Shot_Attempts, x, y) -> goals
+goals %>% mutate(Shot_Attempt_Proportion = Shot_Attempts / sum(Shot_Attempts)) -> goals
+simulated_goals <- tibble()
+for(i in 1:nrow(goals)){
+  current_goal <- goals[i,]
+  n_goals <- current_goal$Proportion_of_Goals * current_goal$Shot_Attempts
+  shot_attempts <- current_goal$Shot_Attempts
+  Shot_Attempt_Proportion <- current_goal$Shot_Attempt_Proportion
+  x <- current_goal$x
+  y <- current_goal$y
+  made <- tibble(Goal = rep(1, n_goals), x = rep(x, n_goals), y = rep(y, n_goals), Shot_Attempt_Proportion=rep(Shot_Attempt_Proportion,n_goals))
+  missed <- tibble(Goal = rep(0, shot_attempts - n_goals), x = rep(x, shot_attempts - n_goals), y = rep(y, shot_attempts - n_goals),rep(Shot_Attempt_Proportion=Shot_Attempt_Proportion,shot_attempts - n_goals))
+  current_simulated_goals <- bind_rows(made, missed)
+  simulated_goals <- bind_rows(simulated_goals, current_simulated_goals)
+}
+
+
+
+
+
+```
+
+
+
+```{r}
+
+#create a GAM predicting `Proportion of Goals` from x and y
+shot_gam <- gam(Shot_Attempt_Proportion ~ s(x,y,k=7), data = goals)
+
+goal_gam <- gam(Goal ~ s(x,y,k=7), data = simulated_goals)
+
+simulated_data <- expand.grid(x = seq(-2.5,2.5, length.out = 100), y = seq(-1.5,1.5, length.out = 50))
+simulated_data$Goal <- predict(goal_gam, newdata = simulated_data, type = "response")
+simulated_data$Shot_Attempt_Proportion <- predict(shot_gam, newdata = simulated_data, type = "response")
+
+simulated_data %>% ggplot(aes(x = x, y = y, fill = Goal)) +
+  geom_tile() +
+  scale_fill_viridis_c() +
+  theme_minimal() +
+  labs(title = "Goal Conversion",
+       x = "x",
+       y = "y") -> conversion_plot
+
+simulated_data %>% rename(`Attempt Proportion` = Shot_Attempt_Proportion) %>% ggplot(aes(x = x, y = y, fill = `Attempt Proportion`)) +
+  geom_tile() +
+  scale_fill_viridis_c(option = "inferno") +
+  theme_minimal() +
+  labs(title = "Volume",
+       x = "x",
+       y = "y") -> shot_attempts_plot
+
+#create ggplot grid
+plot_grid(conversion_plot, shot_attempts_plot, nrow = 2,align = "hv")
+
+
+```
+
